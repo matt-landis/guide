@@ -503,14 +503,25 @@
             });
 
             // Then gallery with thumbs reference
-           gallerySwiper = new Swiper('.gallery', {
-    spaceBetween: 5,
-    width: window.innerWidth,
-    height: window.innerHeight * 0.55,  // Matches the 55vh of #main-area
-    thumbs: {
-        swiper: thumbsSwiper
-    }
-});
+            gallerySwiper = new Swiper('.gallery', {
+                spaceBetween: 5,
+                width: window.innerWidth,
+                height: window.innerHeight * 0.55,
+                thumbs: {
+                    swiper: thumbsSwiper
+                }
+            });
+
+            // Auto-stop speech when swiping to a new place
+            gallerySwiper.on('slideChange', () => {
+                if (speechSynthesis.speaking) {
+                    speechSynthesis.cancel();
+                    document.querySelectorAll('.play-button i').forEach(ic => {
+                        ic.classList.remove('fa-pause');
+                        ic.classList.add('fa-play');
+                    });
+                }
+            });
 
             // Re-attach play button listeners
             document.querySelectorAll('.play-button').forEach(btn => {
@@ -521,33 +532,37 @@
         function toggleTTS(e) {
             e.stopPropagation();
             const btn = e.currentTarget;
-            const index = btn.dataset.index;
-            const poi = pois[index];
             const icon = btn.querySelector('i');
+            const index = parseInt(btn.dataset.index);
 
             if (speechSynthesis.speaking) {
-                if (speechSynthesis.paused) {
-                    speechSynthesis.resume();
-                    icon.classList.replace('fa-play', 'fa-pause');
-                } else {
-                    speechSynthesis.pause();
-                    icon.classList.replace('fa-pause', 'fa-play');
-                }
-                return;
-            }
+                speechSynthesis.cancel();
+                icon.classList.remove('fa-pause');
+                icon.classList.add('fa-play');
+            } else {
+                const poi = pois[index];
+                const text = `${poi.name}. ${poi.desc}`;
+                currentUtterance = new SpeechSynthesisUtterance(text);
 
-            speechSynthesis.cancel();
-            const text = `${poi.name}. ${poi.desc}`;
-            currentUtterance = new SpeechSynthesisUtterance(text);
-            const voices = speechSynthesis.getVoices();
-            if (settings.ttsVoice) {
-                currentUtterance.voice = voices.find(v => v.name === settings.ttsVoice) || null;
+                const voices = speechSynthesis.getVoices();
+                if (settings.ttsVoice) {
+                    currentUtterance.voice = voices.find(v => v.name === settings.ttsVoice) || null;
+                }
+
+                currentUtterance.onend = () => {
+                    icon.classList.remove('fa-pause');
+                    icon.classList.add('fa-play');
+                };
+
+                currentUtterance.onerror = () => {
+                    icon.classList.remove('fa-pause');
+                    icon.classList.add('fa-play');
+                };
+
+                speechSynthesis.speak(currentUtterance);
+                icon.classList.remove('fa-play');
+                icon.classList.add('fa-pause');
             }
-            currentUtterance.onend = () => {
-                icon.classList.replace('fa-pause', 'fa-play');
-            };
-            speechSynthesis.speak(currentUtterance);
-            icon.classList.replace('fa-play', 'fa-pause');
         }
 
         function refreshPOIs() {
