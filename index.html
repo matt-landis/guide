@@ -18,7 +18,7 @@
             --text-color: #e0e0e0;
         }
         html, body {
-            height: 100%;
+            height: 100dvh;  /* Changed from 100% */
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -31,7 +31,7 @@
             flex-direction: column;
         }
         #title-area {
-            flex: 0 0 10vh;
+            flex: 0 0 10dvh;  /* Changed from 10vh */
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -76,17 +76,17 @@
             background-color: rgba(255,255,255,0.2);
         }
         #main-area {
-            flex: 0 0 55vh;
+            flex: 0 0 55dvh;  /* Changed from 55vh */
             position: relative;
         }
         #thumbnail-area {
-            flex: 0 0 30vh;
+            flex: 0 0 30dvh;  /* Changed from 30vh */
             padding: 10px;
             box-sizing: border-box;
             background-color: var(--bg-color);
         }
         #footer-area {
-            flex: 0 0 5vh;
+            flex: 0 0 5dvh;  /* Changed from 5vh */
             display: flex;
             align-items: center;
             padding: 0 15px;
@@ -241,6 +241,15 @@
                 <option value="imperial">Imperial (miles/ft)</option>
             </select>
 
+            <label>Distance to get places</label>
+            <select id="search-distance">
+                <option value="1">1 mile</option>
+                <option value="3">3 miles</option>
+                <option value="5" selected>5 miles</option>
+                <option value="10">10 miles</option>
+                <option value="20">20 miles</option>
+            </select>
+
             <label><input type="checkbox" id="dark-mode"> Dark Mode</label>
 
             <label><input type="checkbox" id="auto-check"> Automatically check every 30 seconds</label>
@@ -271,6 +280,7 @@
 
         const defaultSettings = {
             units: 'metric',
+            searchDistance: 5,  // always in miles
             darkMode: false,
             autoCheck: false,
             ttsVoice: '',
@@ -297,6 +307,7 @@
         function applySettings() {
             document.body.classList.toggle('dark-mode', settings.darkMode);
             document.getElementById('units').value = settings.units;
+            document.getElementById('search-distance').value = settings.searchDistance;
             document.getElementById('dark-mode').checked = settings.darkMode;
             document.getElementById('auto-check').checked = settings.autoCheck;
             document.getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
@@ -313,6 +324,7 @@
 
         function saveSettings() {
             settings.units = document.getElementById('units').value;
+            settings.searchDistance = parseInt(document.getElementById('search-distance').value);
             settings.darkMode = document.getElementById('dark-mode').checked;
             settings.autoCheck = document.getElementById('auto-check').checked;
             settings.ttsVoice = document.getElementById('tts-voice').value;
@@ -372,18 +384,24 @@
             document.getElementById('status').textContent = text;
         }
 
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
+        // Always returns distance in miles
+        function haversineDistanceMiles(lat1, lon1, lat2, lon2) {
+            const R = 6371; // km
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            let d = R * c;
+            const dKm = R * c;
+            return dKm * 0.621371; // convert to miles
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const distMiles = haversineDistanceMiles(lat1, lon1, lat2, lon2);
             if (settings.units === 'imperial') {
-                d *= 0.621371;
-                return d.toFixed(2) + ' miles';
+                return distMiles.toFixed(2) + ' miles';
+            } else {
+                return (distMiles * 1.60934).toFixed(2) + ' km';
             }
-            return d.toFixed(2) + ' km';
         }
 
         async function fetchPOIs(lat, lon) {
@@ -397,6 +415,9 @@
 
             await Promise.all(promises);
 
+            // Filter all results to only those within selected distance (in miles)
+            pois = pois.filter(poi => poi.distRaw <= settings.searchDistance);
+
             pois.sort((a, b) => a.distRaw - b.distRaw);
             updateGallery();
             showProgress(false);
@@ -404,7 +425,8 @@
         }
 
         async function fetchWikipedia(lat, lon) {
-            const url = `https://en.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=30&prop=coordinates|pageimages|extracts&exintro&explaintext&exchars=400&piprop=thumbnail&pithumbsize=600&format=json&origin=*`;
+            const radiusMeters = Math.round(settings.searchDistance * 1609.34);
+            const url = `https://en.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=${radiusMeters}&ggslimit=50&prop=coordinates|pageimages|extracts&exintro&explaintext&exchars=400&piprop=thumbnail&pithumbsize=600&format=json&origin=*`;
             try {
                 const res = await fetch(url);
                 const data = await res.json();
@@ -412,12 +434,12 @@
                     Object.values(data.query.pages).forEach(page => {
                         if (page.coordinates) {
                             const coord = page.coordinates[0];
-                            const distRaw = parseFloat(calculateDistance(lat, lon, coord.lat, coord.lon).split(' ')[0]);
+                            const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);
                             pois.push({
                                 name: page.title,
                                 desc: page.extract?.trim() || 'No description available.',
                                 dist: calculateDistance(lat, lon, coord.lat, coord.lon),
-                                distRaw,
+                                distRaw: distMiles,
                                 source: 'Wikipedia',
                                 image: page.thumbnail?.source || ''
                             });
@@ -428,7 +450,7 @@
         }
 
         async function fetchOSM(lat, lon) {
-            let queries = settings.categories.map(cat => `node(around:10000,${lat},${lon})${categoryMap[cat]};`).join('');
+            let queries = settings.categories.map(cat => `node(around:${Math.round(settings.searchDistance * 1609.34)},${lat},${lon})${categoryMap[cat]};`).join('');
             if (!queries) return;
             const query = `[out:json][timeout:25];(${queries});out body;`;
             const url = 'https://overpass-api.de/api/interpreter';
@@ -444,12 +466,12 @@
                         } else if (el.tags.image?.startsWith('http')) {
                             image = el.tags.image;
                         }
-                        const distRaw = parseFloat(calculateDistance(lat, lon, el.lat, el.lon).split(' ')[0]);
+                        const distMiles = haversineDistanceMiles(lat, lon, el.lat, el.lon);
                         pois.push({
                             name: el.tags.name,
                             desc: el.tags.description || (el.tags.wikipedia ? `See Wikipedia article on ${el.tags.wikipedia.split(':')[1] || el.tags.wikipedia}` : 'No description available.'),
                             dist: calculateDistance(lat, lon, el.lat, el.lon),
-                            distRaw,
+                            distRaw: distMiles,
                             source: 'OpenStreetMap',
                             image
                         });
@@ -490,11 +512,9 @@
                 });
             }
 
-            // Destroy existing swipers if they exist
             if (gallerySwiper) gallerySwiper.destroy(true, true);
             if (thumbsSwiper) thumbsSwiper.destroy(true, true);
 
-            // Re-initialize thumbs first
             thumbsSwiper = new Swiper('.thumbs', {
                 spaceBetween: 12,
                 slidesPerView: 'auto',
@@ -502,7 +522,6 @@
                 watchSlidesProgress: true
             });
 
-            // Then gallery with thumbs reference
             gallerySwiper = new Swiper('.gallery', {
                 spaceBetween: 5,
                 width: window.innerWidth,
@@ -512,7 +531,6 @@
                 }
             });
 
-            // Auto-stop speech when swiping to a new place
             gallerySwiper.on('slideChange', () => {
                 if (speechSynthesis.speaking) {
                     speechSynthesis.cancel();
@@ -523,7 +541,6 @@
                 }
             });
 
-            // Re-attach play button listeners
             document.querySelectorAll('.play-button').forEach(btn => {
                 btn.addEventListener('click', toggleTTS);
             });
@@ -588,10 +605,9 @@
             );
         }
 
-        // Event listeners
         document.getElementById('refresh').addEventListener('click', refreshPOIs);
         document.getElementById('settings-btn').addEventListener('click', () => {
-            populateVoices(); // refresh in case voices loaded late
+            populateVoices();
             document.getElementById('settings-modal').style.display = 'flex';
         });
         document.getElementById('save-settings').addEventListener('click', saveSettings);
@@ -599,11 +615,10 @@
             document.getElementById('settings-modal').style.display = 'none';
         });
 
-        // Initialize
         window.addEventListener('load', () => {
             loadSettings();
             populateVoices();
-            speechSynthesis.onvoiceschanged = populateVoices; // in case not loaded yet
+            speechSynthesis.onvoiceschanged = populateVoices;
             refreshPOIs();
         });
     </script>
