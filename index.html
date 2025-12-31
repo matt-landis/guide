@@ -415,8 +415,6 @@
 
             await Promise.all(promises);
 
-            // Filter all results to only those within selected distance (in miles)
-            pois = pois.filter(poi => poi.distRaw <= settings.searchDistance);
 
             pois.sort((a, b) => a.distRaw - b.distRaw);
             updateGallery();
@@ -424,30 +422,37 @@
             setStatus(pois.length ? `${pois.length} places found` : 'No places found nearby');
         }
 
-        async function fetchWikipedia(lat, lon) {
-            const radiusMeters = Math.round(settings.searchDistance * 1609.34);
-            const url = `https://en.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=${radiusMeters}&ggslimit=50&prop=coordinates|pageimages|extracts&exintro&explaintext&exchars=400&piprop=thumbnail&pithumbsize=600&format=json&origin=*`;
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
-                if (data.query?.pages) {
-                    Object.values(data.query.pages).forEach(page => {
-                        if (page.coordinates) {
-                            const coord = page.coordinates[0];
-                            const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);
-                            pois.push({
-                                name: page.title,
-                                desc: page.extract?.trim() || 'No description available.',
-                                dist: calculateDistance(lat, lon, coord.lat, coord.lon),
-                                distRaw: distMiles,
-                                source: 'Wikipedia',
-                                image: page.thumbnail?.source || ''
-                            });
-                        }
-                    });
+   async function fetchWikipedia(lat, lon) {
+    // Cap the radius at Wikipedia's maximum: 10000 meters
+    const maxWikiRadiusMeters = 10000;
+    const requestedRadiusMeters = settings.searchDistance * 1609.34;
+    const radiusMeters = Math.round(Math.min(requestedRadiusMeters, maxWikiRadiusMeters));
+
+    const url = `https://en.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50&prop=coordinates|pageimages|extracts&exintro&explaintext&exchars=400&piprop=thumbnail&pithumbsize=600&format=json&origin=*`;
+    
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.query?.pages) {
+            Object.values(data.query.pages).forEach(page => {
+                if (page.coordinates) {
+                    const coord = page.coordinates[0];
+                    const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);                
+                        pois.push({
+                            name: page.title,
+                            desc: page.extract?.trim() || 'No description available.',
+                            dist: calculateDistance(lat, lon, coord.lat, coord.lon),
+                            distRaw: distMiles,
+                            source: 'Wikipedia',
+                            image: page.thumbnail?.source || ''
+                        });                   
                 }
-            } catch (e) { console.error('Wikipedia fetch error:', e); }
+            });
         }
+    } catch (e) { 
+        console.error('Wikipedia fetch error:', e); 
+    }
+}
 
         async function fetchOSM(lat, lon) {
             let queries = settings.categories.map(cat => `node(around:${Math.round(settings.searchDistance * 1609.34)},${lat},${lon})${categoryMap[cat]};`).join('');
