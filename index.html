@@ -213,6 +213,7 @@
         <div class="header-buttons">
             <button id="refresh" title="Refresh"><i class="fas fa-sync-alt"></i></button>
             <button id="settings-btn" title="Settings"><i class="fas fa-cog"></i></button>
+	    <button id="more-btn" title="More"><i class="fas fa-ellipsis-vertical"></i></button>
         </div>
     </div>
 
@@ -422,13 +423,22 @@
             setStatus(pois.length ? `${pois.length} places found` : 'No places found nearby');
         }
 
-   async function fetchWikipedia(lat, lon) {
-    // Cap the radius at Wikipedia's maximum: 10000 meters
-    const maxWikiRadiusMeters = 10000;
-    const requestedRadiusMeters = settings.searchDistance * 1609.34;
-    const radiusMeters = Math.round(Math.min(requestedRadiusMeters, maxWikiRadiusMeters));
+  
 
-    const url = `https://en.wikipedia.org/w/api.php?action=query&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50&prop=coordinates|pageimages|extracts&exintro&explaintext&exchars=400&piprop=thumbnail&pithumbsize=600&format=json&origin=*`;
+ async function fetchWikipedia(lat, lon) {
+    // Cap the radius at Wikipedia's maximum: 10000 meters
+    // const maxWikiRadiusMeters = 10000;
+    // const requestedRadiusMeters = settings.searchDistance * 1609.34;
+    // const radiusMeters = Math.round(Math.min(requestedRadiusMeters, maxWikiRadiusMeters));
+
+
+
+const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&format=json`
+                    + `&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50`
+                    + `&prop=coordinates|pageimages|extracts|info`
+                    + `&colimit=50&piprop=thumbnail&pithumbsize=400&pilimit=50`
+                    + `&exintro=1&explaintext=1&exsentences=3&exlimit=max`
+                    + `&inprop=url`;
     
     try {
         const res = await fetch(url);
@@ -437,10 +447,11 @@
             Object.values(data.query.pages).forEach(page => {
                 if (page.coordinates) {
                     const coord = page.coordinates[0];
-                    const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);                
+                    const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);   
+		    const sentences = page.extract ? page.extract.trim() : 'No description available.';             
                         pois.push({
                             name: page.title,
-                            desc: page.extract?.trim() || 'No description available.',
+                            desc: sentences,
                             dist: calculateDistance(lat, lon, coord.lat, coord.lon),
                             distRaw: distMiles,
                             source: 'Wikipedia',
@@ -453,6 +464,7 @@
         console.error('Wikipedia fetch error:', e); 
     }
 }
+
 
         async function fetchOSM(lat, lon) {
             let queries = settings.categories.map(cat => `node(around:${Math.round(settings.searchDistance * 1609.34)},${lat},${lon})${categoryMap[cat]};`).join('');
@@ -504,6 +516,8 @@
                         <div class="poi-info">
                             <div class="poi-name">${poi.name}</div>
                             <div class="poi-dist">${poi.dist}</div>
+			    <div class="poi-dist">${poi.source}</div>
+			    <div class="poi-dist">${poi.desc}</div>
                         </div>
                         <button class="play-button" data-index="${i}"><i class="fas fa-play"></i></button>
                     `;
