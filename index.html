@@ -425,43 +425,107 @@
 
   
 
- async function fetchWikipedia(lat, lon) {
-    // Cap the radius at Wikipedia's maximum: 10000 meters
-    // const maxWikiRadiusMeters = 10000;
-    // const requestedRadiusMeters = settings.searchDistance * 1609.34;
-    // const radiusMeters = Math.round(Math.min(requestedRadiusMeters, maxWikiRadiusMeters));
+async function fetchWikipedia(lat, lon) {
+    const baseUrl = 'https://en.wikipedia.org/w/api.php';
+    const geoSearchUrl = `${baseUrl}?origin=*&action=query&format=json`
+        + `&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50`
+        + `&prop=coordinates|pageimages|extracts|info`
+        + `&colimit=50&piprop=thumbnail&pithumbsize=400&pilimit=50`
+        + `&exintro=1&explaintext=1&exsentences=3&exlimit=50`
+        + `&inprop=url`;
 
-
-
-const url = `https://en.wikipedia.org/w/api.php?origin=*&action=query&format=json`
-                    + `&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50`
-                    + `&prop=coordinates|pageimages|extracts|info`
-                    + `&colimit=50&piprop=thumbnail&pithumbsize=400&pilimit=50`
-                    + `&exintro=1&explaintext=1&exsentences=3&exlimit=max`
-                    + `&inprop=url`;
-    
     try {
-        const res = await fetch(url);
+        const res = await fetch(geoSearchUrl);
         const data = await res.json();
-        if (data.query?.pages) {
-            Object.values(data.query.pages).forEach(page => {
-                if (page.coordinates) {
-                    const coord = page.coordinates[0];
-                    const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);   
-		    const sentences = page.extract ? page.extract.trim() : 'No description available.';             
-                        pois.push({
-                            name: page.title,
-                            desc: sentences,
-                            dist: calculateDistance(lat, lon, coord.lat, coord.lon),
-                            distRaw: distMiles,
-                            source: 'Wikipedia',
-                            image: page.thumbnail?.source || ''
-                        });                   
+
+        if (!data.query?.pages) {
+            return;
+        }
+
+        const pages = Object.values(data.query.pages);
+        const fallbackTitles = [];
+
+        // First pass: collect pages with coordinates and check for missing extracts
+        for (const page of pages) {
+            if (!page.coordinates || !page.coordinates[0]) continue;
+
+            const coord = page.coordinates[0];
+            const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);
+
+            let desc = page.extract ? page.extract.trim() : '';
+
+            if (!desc || desc === '') {
+                // Queue for fallback API call
+                fallbackTitles.push({
+                    title: page.title,
+                    pageid: page.pageid,
+                    coord,
+                    distMiles,
+                    thumbnail: page.thumbnail?.source || '',
+                    fullurl: page.fullurl || ''
+                });
+                desc = 'Loading description...'; // temporary placeholder
+            } else {
+                desc = desc || 'No description available.';
+            }
+
+            pois.push({
+                name: page.title,
+                desc: desc,
+                dist: calculateDistance(lat, lon, coord.lat, coord.lon),
+                distRaw: distMiles,
+                source: 'Wikipedia',
+                image: page.thumbnail?.source || ''
+            });
+        }
+
+        // Second pass: fetch missing summaries via REST API
+        if (fallbackTitles.length > 0) {
+            const summaryPromises = fallbackTitles.map(async (item) => {
+                try {
+                    const encodedTitle = encodeURIComponent(item.title);
+                    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodedTitle}`;
+                    const summaryRes = await fetch(summaryUrl);
+                    const summaryData = await summaryRes.json();
+
+                    if (summaryData.extract) {
+                        return {
+                            title: item.title,
+                            extract: summaryData.extract.trim(),
+                            thumbnail: summaryData.thumbnail?.source || item.thumbnail
+                        };
+                    }
+                } catch (err) {
+                    console.warn(`Failed to fetch summary for ${item.title}:`, err);
+                }
+                return null;
+            });
+
+            const summaries = await Promise.all(summaryPromises);
+
+            // Update pois with better descriptions where available
+            summaries.forEach((summary) => {
+                if (summary) {
+                    const poiIndex = pois.findIndex(p => p.name === summary.title);
+                    if (poiIndex !== -1) {
+                        pois[poiIndex].desc = summary.extract || 'No description available.';
+                        if (summary.thumbnail) {
+                            pois[poiIndex].image = summary.thumbnail;
+                        }
+                    }
+                }
+            });
+
+            // Fallback for any still-missing descriptions
+            pois.forEach(poi => {
+                if (poi.desc === 'Loading description...' || poi.desc === '') {
+                    poi.desc = 'No description available.';
                 }
             });
         }
-    } catch (e) { 
-        console.error('Wikipedia fetch error:', e); 
+
+    } catch (e) {
+        console.error('Wikipedia fetch error:', e);
     }
 }
 
