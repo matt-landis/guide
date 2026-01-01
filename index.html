@@ -18,7 +18,7 @@
             --text-color: #e0e0e0;
         }
         html, body {
-            height: 100dvh;  /* Changed from 100% */
+            height: 100dvh;
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -31,7 +31,7 @@
             flex-direction: column;
         }
         #title-area {
-            flex: 0 0 10dvh;  /* Changed from 10vh */
+            flex: 0 0 10dvh;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -39,6 +39,7 @@
             background-color: var(--main-color);
             color: white;
             box-sizing: border-box;
+            position: relative;
         }
         #title-area h1 {
             margin: 0;
@@ -76,17 +77,17 @@
             background-color: rgba(255,255,255,0.2);
         }
         #main-area {
-            flex: 0 0 55dvh;  /* Changed from 55vh */
+            flex: 0 0 55dvh;
             position: relative;
         }
         #thumbnail-area {
-            flex: 0 0 30dvh;  /* Changed from 30vh */
+            flex: 0 0 30dvh;
             padding: 10px;
             box-sizing: border-box;
             background-color: var(--bg-color);
         }
         #footer-area {
-            flex: 0 0 5dvh;  /* Changed from 5vh */
+            flex: 0 0 5dvh;
             display: flex;
             align-items: center;
             padding: 0 15px;
@@ -202,6 +203,58 @@
             height: 60px;
             font-size: 1.8em;
             background-color: var(--main-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        /* Fix: Ensure buttons remain visible on hover in light mode */
+        .circle-btn:hover {
+            background-color: #00008b; /* Darker blue for light mode hover */
+            opacity: 1;
+        }
+        .dark-mode .circle-btn:hover {
+            background-color: #4169e1; /* Lighter blue for dark mode hover */
+        }
+        /* More Menu Styles */
+        #more-menu {
+            position: absolute;
+            top: 100%;
+            right: 15px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            min-width: 180px;
+            z-index: 100;
+            display: none;
+            overflow: hidden;
+        }
+        #more-menu.show {
+            display: block;
+        }
+        .menu-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1em;
+        }
+        .menu-item:hover {
+            background-color: rgba(0,0,0,0.1);
+        }
+        .menu-item i {
+            font-size: 1.1em;
+            width: 20px;
+            text-align: center;
+        }
+        .menu-item.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -213,7 +266,19 @@
         <div class="header-buttons">
             <button id="refresh" title="Refresh"><i class="fas fa-sync-alt"></i></button>
             <button id="settings-btn" title="Settings"><i class="fas fa-cog"></i></button>
-	    <button id="more-btn" title="More"><i class="fas fa-ellipsis-vertical"></i></button>
+            <button id="more-btn" title="More"><i class="fas fa-ellipsis-vertical"></i></button>
+        </div>
+        <!-- More Menu Dropdown -->
+        <div id="more-menu">
+            <div class="menu-item" id="menu-select-location">
+                <i class="fas fa-map-marker-alt"></i> Select Map Location
+            </div>
+            <div class="menu-item" id="menu-refresh-pois">
+                <i class="fas fa-sync-alt"></i> Refresh POIs
+            </div>
+            <div class="menu-item" id="menu-clear-pois">
+                <i class="fas fa-trash-alt"></i> Clear POIs
+            </div>
         </div>
     </div>
 
@@ -416,119 +481,110 @@
 
             await Promise.all(promises);
 
-
             pois.sort((a, b) => a.distRaw - b.distRaw);
             updateGallery();
             showProgress(false);
             setStatus(pois.length ? `${pois.length} places found` : 'No places found nearby');
         }
 
-  
+        async function fetchWikipedia(lat, lon) {
+            const baseUrl = 'https://en.wikipedia.org/w/api.php';
+            const geoSearchUrl = `${baseUrl}?origin=*&action=query&format=json`
+                + `&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50`
+                + `&prop=coordinates|pageimages|extracts|info`
+                + `&colimit=50&piprop=thumbnail&pithumbsize=400&pilimit=50`
+                + `&exintro=1&explaintext=1&exsentences=3&exlimit=50`
+                + `&inprop=url`;
 
-async function fetchWikipedia(lat, lon) {
-    const baseUrl = 'https://en.wikipedia.org/w/api.php';
-    const geoSearchUrl = `${baseUrl}?origin=*&action=query&format=json`
-        + `&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50`
-        + `&prop=coordinates|pageimages|extracts|info`
-        + `&colimit=50&piprop=thumbnail&pithumbsize=400&pilimit=50`
-        + `&exintro=1&explaintext=1&exsentences=3&exlimit=50`
-        + `&inprop=url`;
+            try {
+                const res = await fetch(geoSearchUrl);
+                const data = await res.json();
 
-    try {
-        const res = await fetch(geoSearchUrl);
-        const data = await res.json();
-
-        if (!data.query?.pages) {
-            return;
-        }
-
-        const pages = Object.values(data.query.pages);
-        const fallbackTitles = [];
-
-        // First pass: collect pages with coordinates and check for missing extracts
-        for (const page of pages) {
-            if (!page.coordinates || !page.coordinates[0]) continue;
-
-            const coord = page.coordinates[0];
-            const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);
-
-            let desc = page.extract ? page.extract.trim() : '';
-
-            if (!desc || desc === '') {
-                // Queue for fallback API call
-                fallbackTitles.push({
-                    title: page.title,
-                    pageid: page.pageid,
-                    coord,
-                    distMiles,
-                    thumbnail: page.thumbnail?.source || '',
-                    fullurl: page.fullurl || ''
-                });
-                desc = 'Loading description...'; // temporary placeholder
-            } else {
-                desc = desc || 'No description available.';
-            }
-
-            pois.push({
-                name: page.title,
-                desc: desc,
-                dist: calculateDistance(lat, lon, coord.lat, coord.lon),
-                distRaw: distMiles,
-                source: 'Wikipedia',
-                image: page.thumbnail?.source || ''
-            });
-        }
-
-        // Second pass: fetch missing summaries via REST API
-        if (fallbackTitles.length > 0) {
-            const summaryPromises = fallbackTitles.map(async (item) => {
-                try {
-                    const encodedTitle = encodeURIComponent(item.title);
-                    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodedTitle}`;
-                    const summaryRes = await fetch(summaryUrl);
-                    const summaryData = await summaryRes.json();
-
-                    if (summaryData.extract) {
-                        return {
-                            title: item.title,
-                            extract: summaryData.extract.trim(),
-                            thumbnail: summaryData.thumbnail?.source || item.thumbnail
-                        };
-                    }
-                } catch (err) {
-                    console.warn(`Failed to fetch summary for ${item.title}:`, err);
+                if (!data.query?.pages) {
+                    return;
                 }
-                return null;
-            });
 
-            const summaries = await Promise.all(summaryPromises);
+                const pages = Object.values(data.query.pages);
+                const fallbackTitles = [];
 
-            // Update pois with better descriptions where available
-            summaries.forEach((summary) => {
-                if (summary) {
-                    const poiIndex = pois.findIndex(p => p.name === summary.title);
-                    if (poiIndex !== -1) {
-                        pois[poiIndex].desc = summary.extract || 'No description available.';
-                        if (summary.thumbnail) {
-                            pois[poiIndex].image = summary.thumbnail;
+                for (const page of pages) {
+                    if (!page.coordinates || !page.coordinates[0]) continue;
+
+                    const coord = page.coordinates[0];
+                    const distMiles = haversineDistanceMiles(lat, lon, coord.lat, coord.lon);
+
+                    let desc = page.extract ? page.extract.trim() : '';
+
+                    if (!desc || desc === '') {
+                        fallbackTitles.push({
+                            title: page.title,
+                            pageid: page.pageid,
+                            coord,
+                            distMiles,
+                            thumbnail: page.thumbnail?.source || '',
+                            fullurl: page.fullurl || ''
+                        });
+                        desc = 'Loading description...';
+                    } else {
+                        desc = desc || 'No description available.';
+                    }
+
+                    pois.push({
+                        name: page.title,
+                        desc: desc,
+                        dist: calculateDistance(lat, lon, coord.lat, coord.lon),
+                        distRaw: distMiles,
+                        source: 'Wikipedia',
+                        image: page.thumbnail?.source || ''
+                    });
+                }
+
+                if (fallbackTitles.length > 0) {
+                    const summaryPromises = fallbackTitles.map(async (item) => {
+                        try {
+                            const encodedTitle = encodeURIComponent(item.title);
+                            const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodedTitle}`;
+                            const summaryRes = await fetch(summaryUrl);
+                            const summaryData = await summaryRes.json();
+
+                            if (summaryData.extract) {
+                                return {
+                                    title: item.title,
+                                    extract: summaryData.extract.trim(),
+                                    thumbnail: summaryData.thumbnail?.source || item.thumbnail
+                                };
+                            }
+                        } catch (err) {
+                            console.warn(`Failed to fetch summary for ${item.title}:`, err);
                         }
-                    }
-                }
-            });
+                        return null;
+                    });
 
-            // Fallback for any still-missing descriptions
-            pois.forEach(poi => {
-                if (poi.desc === 'Loading description...' || poi.desc === '') {
-                    poi.desc = 'No description available.';
+                    const summaries = await Promise.all(summaryPromises);
+
+                    summaries.forEach((summary) => {
+                        if (summary) {
+                            const poiIndex = pois.findIndex(p => p.name === summary.title);
+                            if (poiIndex !== -1) {
+                                pois[poiIndex].desc = summary.extract || 'No description available.';
+                                if (summary.thumbnail) {
+                                    pois[poiIndex].image = summary.thumbnail;
+                                }
+                            }
+                        }
+                    });
+
+                    pois.forEach(poi => {
+                        if (poi.desc === 'Loading description...' || poi.desc === '') {
+                            poi.desc = 'No description available.';
+                        }
+                    });
                 }
-            });
+
+            } catch (e) {
+                console.error('Wikipedia fetch error:', e);
+            }
         }
-
-    } catch (e) {
-        console.error('Wikipedia fetch error:', e);
-    }
-}
-
 
         async function fetchOSM(lat, lon) {
             let queries = settings.categories.map(cat => `node(around:${Math.round(settings.searchDistance * 1609.34)},${lat},${lon})${categoryMap[cat]};`).join('');
@@ -580,7 +636,7 @@ async function fetchWikipedia(lat, lon) {
                         <div class="poi-info">
                             <div class="poi-name">${poi.name}</div>
                             <div class="poi-dist">${poi.dist}</div>
-			    <div class="poi-dist">${poi.source}</div>			
+                            <div class="poi-dist">${poi.source}</div>			
                         </div>
                         <button class="play-button" data-index="${i}"><i class="fas fa-play"></i></button>
                     `;
@@ -686,6 +742,43 @@ async function fetchWikipedia(lat, lon) {
                 { enableHighAccuracy: true, timeout: 10000 }
             );
         }
+
+        function clearPOIs() {
+            pois = [];
+            updateGallery();
+            setStatus('POIs cleared');
+        }
+
+        // More Menu Toggle
+        const moreBtn = document.getElementById('more-btn');
+        const moreMenu = document.getElementById('more-menu');
+
+        moreBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moreMenu.classList.toggle('show');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
+                moreMenu.classList.remove('show');
+            }
+        });
+
+        // Menu Items
+        document.getElementById('menu-select-location').addEventListener('click', () => {
+            alert('Select Map Location feature coming soon!');
+            moreMenu.classList.remove('show');
+        });
+
+        document.getElementById('menu-refresh-pois').addEventListener('click', () => {
+            refreshPOIs();
+            moreMenu.classList.remove('show');
+        });
+
+        document.getElementById('menu-clear-pois').addEventListener('click', () => {
+            clearPOIs();
+            moreMenu.classList.remove('show');
+        });
 
         document.getElementById('refresh').addEventListener('click', refreshPOIs);
         document.getElementById('settings-btn').addEventListener('click', () => {
