@@ -211,13 +211,12 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
-        /* Fix: Ensure buttons remain visible on hover in light mode */
         .circle-btn:hover {
-            background-color: #00008b; /* Darker blue for light mode hover */
+            background-color: #00008b;
             opacity: 1;
         }
         .dark-mode .circle-btn:hover {
-            background-color: #4169e1; /* Lighter blue for dark mode hover */
+            background-color: #4169e1;
         }
         /* More Menu Styles */
         #more-menu {
@@ -272,6 +271,9 @@
         <div id="more-menu">
             <div class="menu-item" id="menu-select-location">
                 <i class="fas fa-map-marker-alt"></i> Select Map Location
+            </div>
+            <div class="menu-item" id="menu-print-locations">
+                <i class="fas fa-print"></i> Print Locations List
             </div>
             <div class="menu-item" id="menu-refresh-pois">
                 <i class="fas fa-sync-alt"></i> Refresh POIs
@@ -346,7 +348,7 @@
 
         const defaultSettings = {
             units: 'metric',
-            searchDistance: 5,  // always in miles
+            searchDistance: 5,
             darkMode: false,
             autoCheck: false,
             ttsVoice: '',
@@ -361,6 +363,9 @@
             'Parks': '["leisure"="park"]',
             'Historic Sites': '["historic"]'
         };
+
+        // Store coordinates when available (Wikipedia provides them, OSM does too)
+        // We'll enhance POI objects with lat/lon when possible during fetch
 
         function loadSettings() {
             const saved = localStorage.getItem('ahgoSettings');
@@ -450,15 +455,14 @@
             document.getElementById('status').textContent = text;
         }
 
-        // Always returns distance in miles
         function haversineDistanceMiles(lat1, lon1, lat2, lon2) {
-            const R = 6371; // km
+            const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
             const a = Math.sin(dLat/2)**2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2)**2;
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             const dKm = R * c;
-            return dKm * 0.621371; // convert to miles
+            return dKm * 0.621371;
         }
 
         function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -500,9 +504,7 @@
                 const res = await fetch(geoSearchUrl);
                 const data = await res.json();
 
-                if (!data.query?.pages) {
-                    return;
-                }
+                if (!data.query?.pages) return;
 
                 const pages = Object.values(data.query.pages);
                 const fallbackTitles = [];
@@ -535,7 +537,9 @@
                         dist: calculateDistance(lat, lon, coord.lat, coord.lon),
                         distRaw: distMiles,
                         source: 'Wikipedia',
-                        image: page.thumbnail?.source || ''
+                        image: page.thumbnail?.source || '',
+                        lat: coord.lat,
+                        lon: coord.lon
                     });
                 }
 
@@ -610,7 +614,9 @@
                             dist: calculateDistance(lat, lon, el.lat, el.lon),
                             distRaw: distMiles,
                             source: 'OpenStreetMap',
-                            image
+                            image,
+                            lat: el.lat,
+                            lon: el.lon
                         });
                     }
                 });
@@ -749,6 +755,64 @@
             setStatus('POIs cleared');
         }
 
+        function printLocationsList() {
+            if (pois.length === 0) {
+                alert('No locations to display.');
+                return;
+            }
+
+            let html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Locations</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        h1 { text-align: center; color: #333; }
+        .location { margin-bottom: 40px; border-bottom: 1px solid #ddd; padding-bottom: 20px; }
+        .name { font-size: 1.8em; font-weight: bold; color: #0066cc; margin-bottom: 10px; }
+        .image { text-align: center; margin: 20px 0; }
+        .image img { max-width: 100%; max-height: 400px; border-radius: 8px; }
+        .desc { margin: 15px 0; }
+        .coords { font-family: monospace; background: #f0f0f0; padding: 8px; border-radius: 4px; display: inline-block; }
+        .source { color: #666; font-style: italic; }
+        .no-image { color: #999; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Locations</h1>
+`;
+
+            pois.forEach(poi => {
+                const lat = poi.lat !== undefined ? poi.lat.toFixed(6) : 'N/A';
+                const lon = poi.lon !== undefined ? poi.lon.toFixed(6) : 'N/A';
+                const coords = lat !== 'N/A' && lon !== 'N/A' ? `${lat}, ${lon}` : 'Not available';
+
+                html += `
+    <div class="location">
+        <div class="name">${poi.name}</div>
+        <div class="image">
+            ${poi.image ? `<img src="${poi.image}" alt="${poi.name}">` : '<div class="no-image">No image available</div>'}
+        </div>
+        <div class="desc">${poi.desc || 'No description available.'}</div>
+        <div><strong>Coordinates:</strong> <span class="coords">${coords}</span></div>
+        <div class="source">Source: ${poi.source}</div>
+    </div>
+`;
+            });
+
+            html += `
+</body>
+</html>
+`;
+
+            const newTab = window.open('');
+            newTab.document.write(html);
+            newTab.document.close();
+        }
+
         // More Menu Toggle
         const moreBtn = document.getElementById('more-btn');
         const moreMenu = document.getElementById('more-menu');
@@ -767,6 +831,11 @@
         // Menu Items
         document.getElementById('menu-select-location').addEventListener('click', () => {
             alert('Select Map Location feature coming soon!');
+            moreMenu.classList.remove('show');
+        });
+
+        document.getElementById('menu-print-locations').addEventListener('click', () => {
+            printLocationsList();
             moreMenu.classList.remove('show');
         });
 
