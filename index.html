@@ -6,6 +6,10 @@
     <title>AhGo!</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
     <style>
         :root {
             --main-color: blue;
@@ -255,6 +259,47 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        /* Map Modal Styles */
+        #map-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            z-index: 200;
+        }
+        #map-modal.show {
+            display: flex;
+        }
+        #map-header {
+            padding: 15px;
+            background: var(--main-color);
+            color: white;
+            text-align: center;
+            font-size: 1.2em;
+            position: relative;
+        }
+        #current-coords {
+            font-weight: bold;
+        }
+        #close-map {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.8em;
+            cursor: pointer;
+        }
+        #map-container {
+            flex: 1;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
     </style>
 </head>
 <body>
@@ -274,6 +319,9 @@
             </div>
             <div class="menu-item" id="menu-print-locations">
                 <i class="fas fa-print"></i> Print Locations List
+            </div>
+            <div class="menu-item" id="menu-show-map">
+                <i class="fas fa-map"></i> Show Locations on Map
             </div>
             <div class="menu-item" id="menu-refresh-pois">
                 <i class="fas fa-sync-alt"></i> Refresh POIs
@@ -339,12 +387,31 @@
         </form>
     </div>
 
+    <!-- Map Modal -->
+    <div id="map-modal">
+        <div id="map-header">
+            Current location: <span id="current-coords">Unknown</span>
+            <button id="close-map"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
     <script>
         let gallerySwiper = null;
         let thumbsSwiper = null;
         let pois = [];
         let currentUtterance = null;
+        let currentLat = null;
+        let currentLon = null;
+        let map = null;
+        let mapMarkers = [];
 
         const defaultSettings = {
             units: 'metric',
@@ -364,9 +431,6 @@
             'Historic Sites': '["historic"]'
         };
 
-        // Store coordinates when available (Wikipedia provides them, OSM does too)
-        // We'll enhance POI objects with lat/lon when possible during fetch
-
         function loadSettings() {
             const saved = localStorage.getItem('ahgoSettings');
             if (saved) {
@@ -381,7 +445,7 @@
             document.getElementById('search-distance').value = settings.searchDistance;
             document.getElementById('dark-mode').checked = settings.darkMode;
             document.getElementById('auto-check').checked = settings.autoCheck;
-            document.getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
+            document. getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
             document.getElementById('source-osm').checked = settings.sources.includes('OpenStreetMaps');
             populateCategories();
 
@@ -475,6 +539,8 @@
         }
 
         async function fetchPOIs(lat, lon) {
+            currentLat = lat;
+            currentLon = lon;
             showProgress(true);
             setStatus('Searching nearby places...');
             pois = [];
@@ -813,6 +879,67 @@
             newTab.document.close();
         }
 
+        function showMap() {
+            if (currentLat === null || currentLon === null) {
+                alert('Current location not available yet. Please wait for POIs to load.');
+                return;
+            }
+            if (pois.length === 0) {
+                alert('No POIs loaded to display on map.');
+                return;
+            }
+
+            document.getElementById('current-coords').textContent = `${currentLat.toFixed(6)}, ${currentLon.toFixed(6)}`;
+            document.getElementById('map-modal').classList.add('show');
+
+            if (!map) {
+                map = L.map('map').setView([currentLat, currentLon], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(map);
+            } else {
+                map.setView([currentLat, currentLon], 13);
+            }
+
+            // Clear previous markers
+            mapMarkers.forEach(m => map.removeLayer(m));
+            mapMarkers = [];
+
+            // Add current location marker (blue, unique)
+            const userIcon = L.divIcon({
+                className: 'user-location-marker',
+                html: '<i class="fas fa-map-marker-alt" style="color:blue;font-size:24px;"></i>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 30]
+            });
+            const userMarker = L.marker([currentLat, currentLon], { icon: userIcon })
+                .addTo(map)
+                .bindPopup('You are here')
+                .openPopup();
+            mapMarkers.push(userMarker);
+
+            // Add POI markers (default red)
+            const bounds = L.latLngBounds([[currentLat, currentLon]]);
+            pois.forEach(poi => {
+                if (poi.lat && poi.lon) {
+                    const marker = L.marker([poi.lat, poi.lon])
+                        .addTo(map)
+                        .bindPopup(`<b>${poi.name}</b><br>${poi.source}`);
+                    mapMarkers.push(marker);
+                    bounds.extend([poi.lat, poi.lon]);
+                }
+            });
+
+            // Fit map to include all markers
+            if (pois.length > 0) {
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+
+        function closeMap() {
+            document.getElementById('map-modal').classList.remove('show');
+        }
+
         // More Menu Toggle
         const moreBtn = document.getElementById('more-btn');
         const moreMenu = document.getElementById('more-menu');
@@ -839,6 +966,11 @@
             moreMenu.classList.remove('show');
         });
 
+        document.getElementById('menu-show-map').addEventListener('click', () => {
+            showMap();
+            moreMenu.classList.remove('show');
+        });
+
         document.getElementById('menu-refresh-pois').addEventListener('click', () => {
             refreshPOIs();
             moreMenu.classList.remove('show');
@@ -848,6 +980,8 @@
             clearPOIs();
             moreMenu.classList.remove('show');
         });
+
+        document.getElementById('close-map').addEventListener('click', closeMap);
 
         document.getElementById('refresh').addEventListener('click', refreshPOIs);
         document.getElementById('settings-btn').addEventListener('click', () => {
