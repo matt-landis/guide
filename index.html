@@ -594,6 +594,8 @@
             const promises = [];
             if (settings.sources.includes('Wikipedia')) promises.push(fetchWikipedia(lat, lon));
             if (settings.sources.includes('OpenStreetMaps')) promises.push(fetchOSM(lat, lon));
+	    if (settings.sources.includes('OpenStreetMaps')) promises.push(fetchUserPlaces(lat, lon));
+
 
             await Promise.all(promises);
 
@@ -736,6 +738,88 @@
                 });
             } catch (e) { console.error('OSM fetch error:', e); }
         }
+
+
+async function fetchUserPlaces(lat, lon) {
+    const maxDistanceMiles = 10; // Adjust this to match your desired search radius (similar to settings.searchDistance in OSM)
+   
+
+    try {
+        // In a real environment (e.g., Node.js or browser with fetch), you would fetch the CSV file:
+        const res = await fetch('places.csv');
+        const csvText = await res.text();
+
+        // For this example, we'll assume csvText is already loaded as a string
+        // Replace this with actual loading logic as needed
+        // const csvText = await fetch('places.csv').then(r => r.text());
+
+        const lines = csvText.trim().split('\n');
+        const headers = lines[0].split(',');
+
+        // Find column indices
+        const nameIdx = headers.indexOf('PlaceName');
+        const descIdx = headers.indexOf('PlaceDescription');
+        const imageIdx = headers.indexOf('image');
+        const latIdx = headers.indexOf('lat');
+        const lonIdx = headers.indexOf('lon');
+        // Optional: tourIdx = headers.indexOf('tour'), tourOrderIdx = headers.indexOf('tour_order')
+
+        for (let i = 1; i < lines.length; i++) {
+            const values = [];
+            let current = '';
+            let inQuotes = false;
+            for (let char of lines[i] + ',') {  // Add comma to flush last field
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    values.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+
+            if (values.length < headers.length) continue; // Skip malformed lines
+
+            try {
+                const placeLat = parseFloat(values[latIdx]);
+                const placeLon = parseFloat(values[lonIdx]);
+                if (isNaN(placeLat) || isNaN(placeLon)) continue;
+
+                const distMiles = haversineDistanceMiles(lat, lon, placeLat, placeLon);
+                if (distMiles > maxDistanceMiles) continue;
+
+                const image = values[imageIdx]?.trim() || '';
+                const desc = values[descIdx]?.trim() || 'No description available.';
+
+                pois.push({
+                    name: values[nameIdx]?.trim() || 'Unnamed Place',
+                    desc: desc,
+                    dist: calculateDistance(lat, lon, placeLat, placeLon),  // Reuse your existing function
+                    distRaw: distMiles,
+                    source: 'UserCSV',
+                    image,
+                    lat: placeLat,
+                    lon: placeLon,
+                    fullurl: ''  // Add if you have a URL column
+                    // Optional: tour: values[tourIdx], tour_order: parseInt(values[tourOrderIdx])
+                });
+            } catch (e) {
+                console.warn('Skipping invalid row:', lines[i]);
+            }
+        }
+
+        // Sort by distance (closest first)
+        // pois.sort((a, b) => a.distRaw - b.distRaw);
+
+    } catch (e) {
+        console.error('User places CSV fetch/parse error:', e);
+    }
+
+    // You can now add these pois to your global pois array, e.g.:
+    // pois.push(...loadedPois);
+}
+
 
         function updateGallery() {
             const galleryWrapper = document.querySelector('.gallery .swiper-wrapper');
