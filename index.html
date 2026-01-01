@@ -128,6 +128,7 @@
         .poi-name {
             font-size: 2em;
             margin-bottom: 8px;
+            cursor: pointer;
         }
         .poi-dist {
             font-size: 1.2em;
@@ -258,6 +259,37 @@
         .menu-item.disabled {
             opacity: 0.5;
             cursor: not-allowed;
+        }
+        /* POI Context Menu Styles */
+        #poi-context-menu {
+            position: absolute;
+            background: var(--bg-color);
+            color: var(--text-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            min-width: 180px;
+            z-index: 100;
+            display: none;
+            overflow: hidden;
+        }
+        #poi-context-menu.show {
+            display: block;
+        }
+        .poi-menu-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1em;
+        }
+        .poi-menu-item:hover {
+            background-color: rgba(0,0,0,0.1);
+        }
+        .poi-menu-item i {
+            font-size: 1.1em;
+            width: 20px;
+            text-align: center;
         }
         /* Map Modal Styles */
         #map-modal {
@@ -398,6 +430,19 @@
         </div>
     </div>
 
+    <!-- POI Context Menu -->
+    <div id="poi-context-menu">
+        <div class="poi-menu-item" id="menu-show-details">
+            <i class="fas fa-info-circle"></i> Show Details
+        </div>
+        <div class="poi-menu-item" id="menu-google-maps">
+            <i class="fas fa-directions"></i> Open in Google Maps
+        </div>
+        <div class="poi-menu-item" id="menu-wikipedia">
+            <i class="fab fa-wikipedia-w"></i> Open Wikipedia Page
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
@@ -412,6 +457,7 @@
         let currentLon = null;
         let map = null;
         let mapMarkers = [];
+        let selectedPoiIndex = -1;
 
         const defaultSettings = {
             units: 'metric',
@@ -445,7 +491,7 @@
             document.getElementById('search-distance').value = settings.searchDistance;
             document.getElementById('dark-mode').checked = settings.darkMode;
             document.getElementById('auto-check').checked = settings.autoCheck;
-            document. getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
+            document.getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
             document.getElementById('source-osm').checked = settings.sources.includes('OpenStreetMaps');
             populateCategories();
 
@@ -605,7 +651,8 @@
                         source: 'Wikipedia',
                         image: page.thumbnail?.source || '',
                         lat: coord.lat,
-                        lon: coord.lon
+                        lon: coord.lon,
+                        fullurl: page.fullurl || ''
                     });
                 }
 
@@ -682,7 +729,8 @@
                             source: 'OpenStreetMap',
                             image,
                             lat: el.lat,
-                            lon: el.lon
+                            lon: el.lon,
+                            fullurl: el.tags.wikipedia ? `https://en.wikipedia.org/wiki/${encodeURIComponent(el.tags.wikipedia.split(':')[1] || el.tags.wikipedia)}` : ''
                         });
                     }
                 });
@@ -706,7 +754,7 @@
                     gSlide.style.backgroundImage = poi.image ? `url(${poi.image})` : fallbackBg;
                     gSlide.innerHTML = `
                         <div class="poi-info">
-                            <div class="poi-name">${poi.name}</div>
+                            <div class="poi-name" data-index="${i}">${poi.name}</div>
                             <div class="poi-dist">${poi.dist}</div>
                             <div class="poi-dist">${poi.source}</div>			
                         </div>
@@ -754,6 +802,31 @@
             document.querySelectorAll('.play-button').forEach(btn => {
                 btn.addEventListener('click', toggleTTS);
             });
+
+            // Add click listeners for POI names
+            document.querySelectorAll('.poi-name').forEach(nameEl => {
+                nameEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    selectedPoiIndex = parseInt(e.currentTarget.dataset.index);
+                    showPoiContextMenu(e);
+                });
+            });
+        }
+
+        function showPoiContextMenu(e) {
+            const menu = document.getElementById('poi-context-menu');
+            menu.style.left = `${e.pageX}px`;
+            menu.style.top = `${e.pageY}px`;
+            menu.classList.add('show');
+
+            // Hide menu on outside click
+            const outsideClickListener = (ev) => {
+                if (!menu.contains(ev.target)) {
+                    menu.classList.remove('show');
+                    document.removeEventListener('click', outsideClickListener);
+                }
+            };
+            document.addEventListener('click', outsideClickListener);
         }
 
         function toggleTTS(e) {
@@ -940,6 +1013,33 @@
             document.getElementById('map-modal').classList.remove('show');
         }
 
+        // POI Context Menu Actions
+        document.getElementById('menu-show-details').addEventListener('click', () => {
+            alert('Show Details feature coming soon!');
+            document.getElementById('poi-context-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-google-maps').addEventListener('click', () => {
+            const poi = pois[selectedPoiIndex];
+            if (poi.lat && poi.lon) {
+                const url = `https://www.google.com/maps/search/?api=1&query=${poi.lat},${poi.lon}`;
+                window.open(url, '_blank');
+            } else {
+                alert('Coordinates not available for this place.');
+            }
+            document.getElementById('poi-context-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-wikipedia').addEventListener('click', () => {
+            const poi = pois[selectedPoiIndex];
+            if (poi.fullurl) {
+                window.open(poi.fullurl, '_blank');
+            } else {
+                alert('Wikipedia page not available for this place.');
+            }
+            document.getElementById('poi-context-menu').classList.remove('show');
+        });
+
         // More Menu Toggle
         const moreBtn = document.getElementById('more-btn');
         const moreMenu = document.getElementById('more-menu');
@@ -955,7 +1055,7 @@
             }
         });
 
-        // Menu Items
+        // More Menu Items
         document.getElementById('menu-select-location').addEventListener('click', () => {
             alert('Select Map Location feature coming soon!');
             moreMenu.classList.remove('show');
