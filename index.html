@@ -834,7 +834,16 @@ async function fetchUserPlaces(lat, lon) {
                 pois.forEach((poi, i) => {
                     const fallbackBg = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
                     const gSlide = document.createElement('div');
+		
                     gSlide.className = 'swiper-slide';
+
+		// Start with fallback gradient
+            	gSlide.style.background = fallbackBg;
+            	gSlide.style.backgroundSize = 'cover';
+            	gSlide.style.backgroundPosition = 'center';
+
+
+			
                     gSlide.style.backgroundImage = poi.image ? `url(${poi.image})` : fallbackBg;
                     gSlide.innerHTML = `
                         <div class="poi-info">
