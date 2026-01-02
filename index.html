@@ -197,6 +197,18 @@
             margin: 15px 0 8px;
             font-weight: bold;
         }
+        #interests-input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+        }
+        .dark-mode #interests-input {
+            background: #333;
+            border-color: #555;
+            color: #e0e0e0;
+        }
         .settings-buttons {
             display: flex;
             justify-content: center;
@@ -329,7 +341,7 @@
             height: 100%;
         }
 
-        /* NEW: Details Modal */
+        /* Details Modal */
         #details-modal {
             position: fixed;
             inset: 0;
@@ -475,6 +487,9 @@
             <label><input type="checkbox" id="source-osm" checked> OpenStreetMaps</label>
             <label><input type="checkbox" id="source-usercsv"> UserCSV (places.csv)</label>
 
+            <label>Your interests</label>
+            <input type="text" id="interests-input" placeholder="e.g. tell me history, people associated and interesting trivia">
+
             <div class="settings-buttons">
                 <button type="button" id="save-settings" class="circle-btn"><i class="fas fa-check"></i></button>
                 <button type="button" id="cancel-settings" class="circle-btn"><i class="fas fa-times"></i></button>
@@ -493,7 +508,7 @@
         </div>
     </div>
 
-    <!-- NEW: Details Modal -->
+    <!-- Details Modal -->
     <div id="details-modal">
         <div id="details-header">
             <span id="details-title">Place Details</span>
@@ -521,6 +536,9 @@
         <div class="poi-menu-item" id="menu-search-google">
             <i class="fas fa-search"></i> Search on Google
         </div>
+        <div class="poi-menu-item" id="menu-search-google-ai">
+            <i class="fas fa-robot"></i> Search on Google AI
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
@@ -546,7 +564,8 @@
             autoCheck: false,
             ttsVoice: '',
             categories: ['Attractions', 'Museums', 'Parks', 'Historic Sites'],
-            sources: ['Wikipedia', 'OpenStreetMaps']
+            sources: ['Wikipedia', 'OpenStreetMaps'],
+            interests: 'tell me history, people associated and interesting trivia'
         };
         let settings = { ...defaultSettings };
 
@@ -574,6 +593,7 @@
             document.getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
             document.getElementById('source-osm').checked = settings.sources.includes('OpenStreetMaps');
             document.getElementById('source-usercsv').checked = settings.sources.includes('UserCSV');
+            document.getElementById('interests-input').value = settings.interests;
             populateCategories();
 
             if (settings.autoCheck) {
@@ -590,6 +610,7 @@
             settings.darkMode = document.getElementById('dark-mode').checked;
             settings.autoCheck = document.getElementById('auto-check').checked;
             settings.ttsVoice = document.getElementById('tts-voice').value;
+            settings.interests = document.getElementById('interests-input').value.trim() || defaultSettings.interests;
             settings.sources = [];
             if (document.getElementById('source-wiki').checked) settings.sources.push('Wikipedia');
             if (document.getElementById('source-osm').checked) settings.sources.push('OpenStreetMaps');
@@ -1013,7 +1034,6 @@
             }
         }
 
-        // NEW: Show Details Modal
         function showDetails() {
             const poi = pois[selectedPoiIndex];
             if (!poi) return;
@@ -1212,6 +1232,16 @@
             const poi = pois[selectedPoiIndex];
             if (poi && poi.name) {
                 const query = encodeURIComponent(poi.name);
+                const url = `https://www.google.com/search?q=${query}`;
+                window.open(url, '_blank');
+            }
+            document.getElementById('poi-context-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-search-google-ai').addEventListener('click', () => {
+            const poi = pois[selectedPoiIndex];
+            if (poi && poi.name) {
+                const query = encodeURIComponent(poi.name + " " + settings.interests);
                 const url = `https://www.google.com/search?q=${query}`;
                 window.open(url, '_blank');
             }
