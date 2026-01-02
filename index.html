@@ -411,6 +411,7 @@
             <label>Sources</label>
             <label><input type="checkbox" id="source-wiki" checked> Wikipedia</label>
             <label><input type="checkbox" id="source-osm" checked> OpenStreetMaps</label>
+            <label><input type="checkbox" id="source-usercsv"> UserCSV (places.csv)</label>
 
             <div class="settings-buttons">
                 <button type="button" id="save-settings" class="circle-btn"><i class="fas fa-check"></i></button>
@@ -469,7 +470,7 @@
             autoCheck: false,
             ttsVoice: '',
             categories: ['Attractions', 'Museums', 'Parks', 'Historic Sites'],
-            sources: ['Wikipedia', 'OpenStreetMaps']
+            sources: ['Wikipedia', 'OpenStreetMaps']  // UserCSV off by default
         };
         let settings = { ...defaultSettings };
 
@@ -496,6 +497,7 @@
             document.getElementById('auto-check').checked = settings.autoCheck;
             document.getElementById('source-wiki').checked = settings.sources.includes('Wikipedia');
             document.getElementById('source-osm').checked = settings.sources.includes('OpenStreetMaps');
+            document.getElementById('source-usercsv').checked = settings.sources.includes('UserCSV');
             populateCategories();
 
             if (settings.autoCheck) {
@@ -515,6 +517,7 @@
             settings.sources = [];
             if (document.getElementById('source-wiki').checked) settings.sources.push('Wikipedia');
             if (document.getElementById('source-osm').checked) settings.sources.push('OpenStreetMaps');
+            if (document.getElementById('source-usercsv').checked) settings.sources.push('UserCSV');
 
             settings.categories = [];
             Object.keys(categoryMap).forEach(cat => {
@@ -597,8 +600,7 @@
             const promises = [];
             if (settings.sources.includes('Wikipedia')) promises.push(fetchWikipedia(lat, lon));
             if (settings.sources.includes('OpenStreetMaps')) promises.push(fetchOSM(lat, lon));
-	    if (settings.sources.includes('OpenStreetMaps')) promises.push(fetchUserPlaces(lat, lon));
-
+            if (settings.sources.includes('UserCSV')) promises.push(fetchUserPlaces(lat, lon));
 
             await Promise.all(promises);
 
@@ -742,87 +744,69 @@
             } catch (e) { console.error('OSM fetch error:', e); }
         }
 
-
-async function fetchUserPlaces(lat, lon) {
-    const maxDistanceMiles = 10; // Adjust this to match your desired search radius (similar to settings.searchDistance in OSM)
-   
-
-    try {
-        // In a real environment (e.g., Node.js or browser with fetch), you would fetch the CSV file:
-        const res = await fetch('places.csv');
-        const csvText = await res.text();
-
-        // For this example, we'll assume csvText is already loaded as a string
-        // Replace this with actual loading logic as needed
-        // const csvText = await fetch('places.csv').then(r => r.text());
-
-        const lines = csvText.trim().split('\n');
-        const headers = lines[0].split(',');
-
-        // Find column indices
-        const nameIdx = headers.indexOf('PlaceName');
-        const descIdx = headers.indexOf('PlaceDescription');
-        const imageIdx = headers.indexOf('image');
-        const latIdx = headers.indexOf('lat');
-        const lonIdx = headers.indexOf('lon');
-        // Optional: tourIdx = headers.indexOf('tour'), tourOrderIdx = headers.indexOf('tour_order')
-
-        for (let i = 1; i < lines.length; i++) {
-            const values = [];
-            let current = '';
-            let inQuotes = false;
-            for (let char of lines[i] + ',') {  // Add comma to flush last field
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    values.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-
-            if (values.length < headers.length) continue; // Skip malformed lines
+        async function fetchUserPlaces(lat, lon) {
+            const maxDistanceMiles = 10;
 
             try {
-                const placeLat = parseFloat(values[latIdx]);
-                const placeLon = parseFloat(values[lonIdx]);
-                if (isNaN(placeLat) || isNaN(placeLon)) continue;
+                const res = await fetch('places.csv');
+                const csvText = await res.text();
 
-                const distMiles = haversineDistanceMiles(lat, lon, placeLat, placeLon);
-                if (distMiles > maxDistanceMiles) continue;
+                const lines = csvText.trim().split('\n');
+                const headers = lines[0].split(',');
 
-                const image = values[imageIdx]?.trim() || '';
-                const desc = values[descIdx]?.trim() || 'No description available.';
+                const nameIdx = headers.indexOf('PlaceName');
+                const descIdx = headers.indexOf('PlaceDescription');
+                const imageIdx = headers.indexOf('image');
+                const latIdx = headers.indexOf('lat');
+                const lonIdx = headers.indexOf('lon');
 
-                pois.push({
-                    name: values[nameIdx]?.trim() || 'Unnamed Place',
-                    desc: desc,
-                    dist: calculateDistance(lat, lon, placeLat, placeLon),  // Reuse your existing function
-                    distRaw: distMiles,
-                    source: 'UserCSV',
-                    image,
-                    lat: placeLat,
-                    lon: placeLon,
-                    fullurl: ''  // Add if you have a URL column
-                    // Optional: tour: values[tourIdx], tour_order: parseInt(values[tourOrderIdx])
-                });
+                for (let i = 1; i < lines.length; i++) {
+                    const values = [];
+                    let current = '';
+                    let inQuotes = false;
+                    for (let char of lines[i] + ',') {
+                        if (char === '"') {
+                            inQuotes = !inQuotes;
+                        } else if (char === ',' && !inQuotes) {
+                            values.push(current.trim());
+                            current = '';
+                        } else {
+                            current += char;
+                        }
+                    }
+
+                    if (values.length < headers.length) continue;
+
+                    try {
+                        const placeLat = parseFloat(values[latIdx]);
+                        const placeLon = parseFloat(values[lonIdx]);
+                        if (isNaN(placeLat) || isNaN(placeLon)) continue;
+
+                        const distMiles = haversineDistanceMiles(lat, lon, placeLat, placeLon);
+                        if (distMiles > maxDistanceMiles) continue;
+
+                        const image = values[imageIdx]?.trim() || '';
+                        const desc = values[descIdx]?.trim() || 'No description available.';
+
+                        pois.push({
+                            name: values[nameIdx]?.trim() || 'Unnamed Place',
+                            desc: desc,
+                            dist: calculateDistance(lat, lon, placeLat, placeLon),
+                            distRaw: distMiles,
+                            source: 'UserCSV',
+                            image,
+                            lat: placeLat,
+                            lon: placeLon,
+                            fullurl: ''
+                        });
+                    } catch (e) {
+                        console.warn('Skipping invalid row:', lines[i]);
+                    }
+                }
             } catch (e) {
-                console.warn('Skipping invalid row:', lines[i]);
+                console.error('User places CSV fetch/parse error:', e);
             }
         }
-
-        // Sort by distance (closest first)
-        // pois.sort((a, b) => a.distRaw - b.distRaw);
-
-    } catch (e) {
-        console.error('User places CSV fetch/parse error:', e);
-    }
-
-    // You can now add these pois to your global pois array, e.g.:
-    // pois.push(...loadedPois);
-}
-
 
         function updateGallery() {
             const galleryWrapper = document.querySelector('.gallery .swiper-wrapper');
@@ -837,16 +821,10 @@ async function fetchUserPlaces(lat, lon) {
                 pois.forEach((poi, i) => {
                     const fallbackBg = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
                     const gSlide = document.createElement('div');
-		
                     gSlide.className = 'swiper-slide';
-
-		// Start with fallback gradient
-            	gSlide.style.background = fallbackBg;
-            	gSlide.style.backgroundSize = 'cover';
-            	gSlide.style.backgroundPosition = 'center';
-
-
-			
+                    gSlide.style.background = fallbackBg;
+                    gSlide.style.backgroundSize = 'cover';
+                    gSlide.style.backgroundPosition = 'center';
                     gSlide.style.backgroundImage = poi.image ? `url(${poi.image})` : fallbackBg;
                     gSlide.innerHTML = `
                         <div class="poi-info">
@@ -899,7 +877,6 @@ async function fetchUserPlaces(lat, lon) {
                 btn.addEventListener('click', toggleTTS);
             });
 
-            // Add click listeners for POI names
             document.querySelectorAll('.poi-name').forEach(nameEl => {
                 nameEl.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -915,7 +892,6 @@ async function fetchUserPlaces(lat, lon) {
             menu.style.top = `${e.pageY}px`;
             menu.classList.add('show');
 
-            // Hide menu on outside click
             const outsideClickListener = (ev) => {
                 if (!menu.contains(ev.target)) {
                     menu.classList.remove('show');
@@ -1070,11 +1046,9 @@ async function fetchUserPlaces(lat, lon) {
                 map.setView([currentLat, currentLon], 13);
             }
 
-            // Clear previous markers
             mapMarkers.forEach(m => map.removeLayer(m));
             mapMarkers = [];
 
-            // Add current location marker (blue, unique)
             const userIcon = L.divIcon({
                 className: 'user-location-marker',
                 html: '<i class="fas fa-map-marker-alt" style="color:blue;font-size:24px;"></i>',
@@ -1087,7 +1061,6 @@ async function fetchUserPlaces(lat, lon) {
                 .openPopup();
             mapMarkers.push(userMarker);
 
-            // Add POI markers (default red)
             const bounds = L.latLngBounds([[currentLat, currentLon]]);
             pois.forEach(poi => {
                 if (poi.lat && poi.lon) {
@@ -1099,7 +1072,6 @@ async function fetchUserPlaces(lat, lon) {
                 }
             });
 
-            // Fit map to include all markers
             if (pois.length > 0) {
                 map.fitBounds(bounds, { padding: [50, 50] });
             }
