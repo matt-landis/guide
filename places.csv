@@ -2,13 +2,14 @@ PlaceName,PlaceDescription,image,lat,lon,tour,tour_order
 Historic Ephrata Cloister,"A National Historic Landmark founded in 1732 as one of America's earliest religious communal societies, featuring unique 18th-century architecture, music, and printing press history",https://ephratacloister.org/wp-content/uploads/ec-cover.jpg,40.184463,-76.186251,EphrataHistory,1
 Green Dragon Farmers Market & Auction,"Massive Friday-only market (60 acres) with 400+ vendors: fresh produce, Amish goods, flea market items, food stands, and auctions—a Lancaster County staple.",https://dynamic-media-cdn.tripadvisor.com/media/photo-o/29/5e/3c/9f/caption.jpg?w=900&h=500&s=1,40.214167,-76.147222,EphrataHistory,2
 Winters Leadership Memorial at Veterans' Plaza,"Bronze statue honoring WWII hero Major Dick Winters (Band of Brothers) from Ephrata, with engraved pavers and educational plaques in a peaceful park setting",https://masonrymagazine.com/Public/Images/2015/09/Case-Study-Brick-Plaza-main.jpg,40.1798,-76.1783,,
-Seiverling Museum LLC Car and Pedal Car Museum,"Unique private collection of over 140 vintage pedal cars and antique toys, housed in a historic building with guided tours available",https://automuseums.info/sites/default/files/sieverling.jpg,-76.1708,,
+Seiverling Museum LLC Car and Pedal Car Museum,"Unique private collection of over 140 vintage pedal cars and antique toys, housed in a historic building with guided tours available",https://automuseums.info/sites/default/files/sieverling.jpg,-76.1708,40.1868, -76.1847,,
 Ephrata Performing Arts Center,"Intimate community theater in the historic Sharadin Bigler Theatre offering Broadway-quality musicals, plays, and performances year-round",https://epacpa.org/wp-content/uploads/2024/09/EPAC-Exterior.jpg,40.1714,-76.1742,,
 Warwick to Ephrata Rail Trail,"Scenic 8-mile paved trail connecting Ephrata to Lititz, perfect for walking or biking past Amish farms, woodlands, and historic sites",https://railtrail.lititzpa.com/wp-content/uploads/2023/05/WERT-Trail-Map.jpg,40.1850,-76.1780,,
 Historical Society of the Cocalico Valley,"Museum and research library showcasing Ephrata-area artifacts, genealogy records, and exhibits on local Pennsylvania Dutch history",https://dynamic-media-cdn.tripadvisor.com/media/photo-o/1b/0e/5f/0e/caption.jpg?w=900&h=500&s=1,40.1802,-76.1745,,
 Art of Recycle,"Eclectic creative reuse center and shop filled with donated art supplies, vintage items, and upcycled treasures— a paradise for crafters",https://dynamic-media-cdn.tripadvisor.com/media/photo-o/0e/9f/3e/5c/art-of-recycle.jpg?w=900&h=500&s=1,40.1841,-76.1859,,
 Weathered Vineyards Wine Tasting Room,"Cozy downtown tasting room featuring local Pennsylvania wines in a relaxed setting with charcuterie and occasional live music",https://weatheredvineyards.com/wp-content/uploads/2023/07/Ephrata-Tasting-Room-Exterior.jpg,40.1795,-76.1789,,
 Pour Man's Brewing Company,"Popular craft brewery in a historic building offering house-made beers, pub fare, outdoor seating, and a welcoming community vibe",https://i0.wp.com/breweriesinpa.com/wp-content/uploads/2024/04/img_8676.jpg,40.1845,-76.1860,,
+
 
 
 
