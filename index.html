@@ -441,6 +441,9 @@
         <div class="poi-menu-item" id="menu-wikipedia">
             <i class="fab fa-wikipedia-w"></i> Open Wikipedia Page
         </div>
+        <div class="poi-menu-item" id="menu-search-google">
+            <i class="fas fa-search"></i> Search on Google
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
@@ -1129,6 +1132,16 @@ async function fetchUserPlaces(lat, lon) {
                 window.open(poi.fullurl, '_blank');
             } else {
                 alert('Wikipedia page not available for this place.');
+            }
+            document.getElementById('poi-context-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-search-google').addEventListener('click', () => {
+            const poi = pois[selectedPoiIndex];
+            if (poi && poi.name) {
+                const query = encodeURIComponent(poi.name);
+                const url = `https://www.google.com/search?q=${query}`;
+                window.open(url, '_blank');
             }
             document.getElementById('poi-context-menu').classList.remove('show');
         });
