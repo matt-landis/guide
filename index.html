@@ -299,8 +299,8 @@
             width: 20px;
             text-align: center;
         }
-        /* Map Modal Styles */
-        #map-modal {
+        /* Map Modals */
+        #map-modal, #select-location-modal {
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,0.95);
@@ -308,10 +308,10 @@
             flex-direction: column;
             z-index: 200;
         }
-        #map-modal.show {
+        #map-modal.show, #select-location-modal.show {
             display: flex;
         }
-        #map-header {
+        #map-header, #select-location-header {
             padding: 15px;
             background: var(--main-color);
             color: white;
@@ -322,7 +322,7 @@
         #current-coords {
             font-weight: bold;
         }
-        #close-map {
+        #close-map, #close-select-location {
             position: absolute;
             right: 15px;
             top: 50%;
@@ -333,12 +333,24 @@
             font-size: 1.8em;
             cursor: pointer;
         }
-        #map-container {
+        #map-container, #select-location-container {
             flex: 1;
         }
-        #map {
+        #map, #select-location-map {
             width: 100%;
             height: 100%;
+        }
+        #select-location-instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 1em;
         }
 
         /* Details Modal */
@@ -497,7 +509,7 @@
         </form>
     </div>
 
-    <!-- Map Modal -->
+    <!-- Show Locations on Map Modal -->
     <div id="map-modal">
         <div id="map-header">
             Current location: <span id="current-coords">Unknown</span>
@@ -505,6 +517,18 @@
         </div>
         <div id="map-container">
             <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- Select Location Modal -->
+    <div id="select-location-modal">
+        <div id="select-location-header">
+            Select a location on the map
+            <button id="close-select-location"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="select-location-container">
+            <div id="select-location-map"></div>
+            <div id="select-location-instructions">Tap on the map to choose a location</div>
         </div>
     </div>
 
@@ -554,8 +578,11 @@
         let currentLat = null;
         let currentLon = null;
         let map = null;
+        let selectLocationMap = null;
+        let selectLocationMarker = null;
         let mapMarkers = [];
         let selectedPoiIndex = -1;
+        let manualLocation = null; // {lat, lon} if user selected manually, null if using GPS
 
         const defaultSettings = {
             units: 'metric',
@@ -707,7 +734,10 @@
             setStatus(pois.length ? `${pois.length} places found` : 'No places found nearby');
         }
 
+        // ... (fetchWikipedia, fetchOSM, fetchUserPlaces unchanged) ...
+
         async function fetchWikipedia(lat, lon) {
+            // (unchanged from previous version)
             const baseUrl = 'https://en.wikipedia.org/w/api.php';
             const geoSearchUrl = `${baseUrl}?origin=*&action=query&format=json`
                 + `&generator=geosearch&ggscoord=${lat}|${lon}&ggsradius=10000&ggslimit=50`
@@ -906,6 +936,7 @@
         }
 
         function updateGallery() {
+            // (unchanged from previous version)
             const galleryWrapper = document.querySelector('.gallery .swiper-wrapper');
             const thumbsWrapper = document.querySelector('.thumbs .swiper-wrapper');
             galleryWrapper.innerHTML = '';
@@ -999,6 +1030,7 @@
         }
 
         function toggleTTS(e) {
+            // (unchanged)
             e.stopPropagation();
             const btn = e.currentTarget;
             const icon = btn.querySelector('i');
@@ -1035,6 +1067,7 @@
         }
 
         function showDetails() {
+            // (unchanged)
             const poi = pois[selectedPoiIndex];
             if (!poi) return;
 
@@ -1060,7 +1093,49 @@
             document.getElementById('details-modal').classList.remove('show');
         }
 
+        // NEW: Manual location selection
+        function openSelectLocation() {
+            document.getElementById('select-location-modal').classList.add('show');
+            document.getElementById('more-menu').classList.remove('show');
+
+            if (!selectLocationMap) {
+                selectLocationMap = L.map('select-location-map').setView([20, 0], 2);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(selectLocationMap);
+            }
+
+            // Clear previous marker
+            if (selectLocationMarker) {
+                selectLocationMap.removeLayer(selectLocationMarker);
+                selectLocationMarker = null;
+            }
+
+            selectLocationMap.on('click', function(e) {
+                const lat = e.latlng.lat;
+                const lon = e.latlng.lng;
+
+                if (selectLocationMarker) {
+                    selectLocationMap.removeLayer(selectLocationMarker);
+                }
+
+                selectLocationMarker = L.marker([lat, lon]).addTo(selectLocationMap)
+                    .bindPopup('Selected location')
+                    .openPopup();
+
+                manualLocation = { lat, lon };
+                closeSelectLocation();
+                fetchPOIs(lat, lon);
+            });
+        }
+
+        function closeSelectLocation() {
+            document.getElementById('select-location-modal').classList.remove('show');
+        }
+
         function refreshPOIs() {
+            manualLocation = null; // Reset to GPS on any refresh
+
             if (!navigator.geolocation) {
                 setStatus('Geolocation not supported');
                 showProgress(false);
@@ -1083,6 +1158,8 @@
             );
         }
 
+        // ... (clearPOIs, printLocationsList unchanged) ...
+
         function clearPOIs() {
             pois = [];
             updateGallery();
@@ -1090,6 +1167,7 @@
         }
 
         function printLocationsList() {
+            // (unchanged)
             if (pois.length === 0) {
                 alert('No locations to display.');
                 return;
@@ -1148,6 +1226,7 @@
         }
 
         function showMap() {
+            // (unchanged)
             if (currentLat === null || currentLon === null) {
                 alert('Current location not available yet. Please wait for POIs to load.');
                 return;
@@ -1204,7 +1283,7 @@
             document.getElementById('map-modal').classList.remove('show');
         }
 
-        // POI Context Menu Actions
+        // POI Context Menu Actions (unchanged)
         document.getElementById('menu-show-details').addEventListener('click', showDetails);
 
         document.getElementById('menu-google-maps').addEventListener('click', () => {
@@ -1251,6 +1330,42 @@
         // Close buttons
         document.getElementById('close-details').addEventListener('click', closeDetails);
         document.getElementById('close-map').addEventListener('click', closeMap);
+        document.getElementById('close-select-location').addEventListener('click', closeSelectLocation);
+
+        // More Menu Items
+        document.getElementById('menu-select-location').addEventListener('click', openSelectLocation);
+
+        document.getElementById('menu-print-locations').addEventListener('click', () => {
+            printLocationsList();
+            document.getElementById('more-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-show-map').addEventListener('click', () => {
+            showMap();
+            document.getElementById('more-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-refresh-pois').addEventListener('click', () => {
+            refreshPOIs();
+            document.getElementById('more-menu').classList.remove('show');
+        });
+
+        document.getElementById('menu-clear-pois').addEventListener('click', () => {
+            clearPOIs();
+            document.getElementById('more-menu').classList.remove('show');
+        });
+
+        // ... (rest of event listeners unchanged) ...
+
+        document.getElementById('refresh').addEventListener('click', refreshPOIs);
+        document.getElementById('settings-btn').addEventListener('click', () => {
+            populateVoices();
+            document.getElementById('settings-modal').style.display = 'flex';
+        });
+        document.getElementById('save-settings').addEventListener('click', saveSettings);
+        document.getElementById('cancel-settings').addEventListener('click', () => {
+            document.getElementById('settings-modal').style.display = 'none';
+        });
 
         // More Menu Toggle
         const moreBtn = document.getElementById('more-btn');
@@ -1265,42 +1380,6 @@
             if (!moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
                 moreMenu.classList.remove('show');
             }
-        });
-
-        // More Menu Items
-        document.getElementById('menu-select-location').addEventListener('click', () => {
-            alert('Select Map Location feature coming soon!');
-            moreMenu.classList.remove('show');
-        });
-
-        document.getElementById('menu-print-locations').addEventListener('click', () => {
-            printLocationsList();
-            moreMenu.classList.remove('show');
-        });
-
-        document.getElementById('menu-show-map').addEventListener('click', () => {
-            showMap();
-            moreMenu.classList.remove('show');
-        });
-
-        document.getElementById('menu-refresh-pois').addEventListener('click', () => {
-            refreshPOIs();
-            moreMenu.classList.remove('show');
-        });
-
-        document.getElementById('menu-clear-pois').addEventListener('click', () => {
-            clearPOIs();
-            moreMenu.classList.remove('show');
-        });
-
-        document.getElementById('refresh').addEventListener('click', refreshPOIs);
-        document.getElementById('settings-btn').addEventListener('click', () => {
-            populateVoices();
-            document.getElementById('settings-modal').style.display = 'flex';
-        });
-        document.getElementById('save-settings').addEventListener('click', saveSettings);
-        document.getElementById('cancel-settings').addEventListener('click', () => {
-            document.getElementById('settings-modal').style.display = 'none';
         });
 
         window.addEventListener('load', () => {
